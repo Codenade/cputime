@@ -13,6 +13,12 @@ times = dict()
 interval = 0.5
 rows = 10
 file = None
+mark = False
+usinghotkey = False
+
+def on_hotkey():
+    global mark
+    mark = True
 
 def log(*o : object) -> None:
     rt = time.time() - time_begin
@@ -23,13 +29,24 @@ def log(*o : object) -> None:
     print(f"[{math.floor((rt % 86400) / 3600):02}:{math.floor((rt % 3600) / 60):02}:{math.floor(rt % 60):02}.{math.floor((rt*1000)%1000):003}]: {_o!s}")
 
 parser = argparse.ArgumentParser(description="track top cpu processes")
-parser.add_argument('file',type=str)
+parser.add_argument("file",nargs="?",type=str,help="specify output file (optional)",default=None)
+parser.add_argument("-i", "--interval",nargs="?",default=0.5,const=0.5,type=float,help="set sampling interval in seconds",required=False)
+parser.add_argument("-f", "--format",nargs="?",default="csv",const="csv",choices=("csv"),help="not in use",required=False)
+parser.add_argument("--hotkey",type=str,help="set a hotkey to mark a section of the output",required=False)
 args = parser.parse_args()
-if not args.file == "121279271498752186538765876138768162872838762736762876458176258723685637857":
+usinghotkey = args.hotkey != None
+print(args.hotkey)
+if (usinghotkey):
+    keyboard.add_hotkey(args.hotkey,on_hotkey)
+if not args.file == None:
     file = open(args.file, "wt")
 else:
     file = sys.stdout
-file.write("time, ")
+interval = args.interval
+if not usinghotkey:
+    file.write("time, ")
+else:
+    file.write("time, marked, ")
 for i in range (1, rows-1):
     file.write(f"#{i}, p{i}, ")
 file.write(f"#{rows}, p{rows}\n")
@@ -46,18 +63,23 @@ while not keyboard.is_pressed("esc"):
                 times[process.pid] = process.cpu_times().system
     time_meas = time.time()
     try:
-        snonidle = sorted(nonidle.items(), key=lambda o: o[1])
+        snonidle = sorted(list(nonidle.values()), key=lambda o: o[1], reverse=True)
         if len(snonidle) > 0:
             time_delta = time.time() - time_begin
-            #file.write(f"{math.floor((time_delta % 86400) / 3600):02}:{math.floor((time_delta % 3600) / 60):02}:{math.floor(time_delta % 60):02}.{math.floor((time_delta*1000)%1000):003}")
-            file.write(str(round(time_delta,3)))
+            if not usinghotkey:
+                file.write(f"{math.floor((time_delta % 86400) / 3600):02}:{math.floor((time_delta % 3600) / 60):02}:{math.floor(time_delta % 60):02}.{math.floor((time_delta*1000)%1000):003}")
+            else:
+                file.write(f"{math.floor((time_delta % 86400) / 3600):02}:{math.floor((time_delta % 3600) / 60):02}:{math.floor(time_delta % 60):02}.{math.floor((time_delta*1000)%1000):003}, {int(mark)}")
+                mark = False
+            #file.write(str(round(time_delta,3)))
             for i in range(0,rows-1):
-                item = ["", ""]
+                item = ["-", "0"]
                 if i in range(0, len(snonidle)):
-                    item = snonidle[i][1]
+                    item = snonidle[i]
                 file.write(f", {item[0]}, {item[1]}")
             file.write("\n")
     except Exception as e:
         log(e)
     time.sleep(interval)
 file.close()
+keyboard.clear_all_hotkeys()
